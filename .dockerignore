@@ -3,6 +3,8 @@
 .venv
 __pycache__
 *.pyc
+*.pyo
+*.pyd
 .pytest_cache
 .mypy_cache
 .ruff_cache
@@ -12,3 +14,33 @@ __pycache__
 dist
 build
 *.c
+
+# Exclude large media and image assets
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.mp4
+*.wav
+*.mp3
+
+# Exclude non-runtime documentation, tests, and tools
+benchmarks/
+chrome-extension/
+docs/
+macos/
+scripts/
+tests/
+run_benchmark.py
+DEV_NOTES.md
+CLAUDE.md
+JARVISLAB_AGENTS.md
+CHANGES.md
+CITATION.cff
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+SECURITY.md
+
+# Explicitly preserve third_party for uv sync resolution
+!third_party/
+

@@ -1,3 +1,7 @@
+# NOTE: For CPU deployments (e.g. Render Free/Starter tiers), use Dockerfile.cpu
+# In Render Dashboard: Settings -> Build & Deploy -> Dockerfile Path: Dockerfile.cpu
+# Or deploy using the included render.yaml Blueprint.
+
 FROM ghcr.io/astral-sh/uv:0.13.6 AS uvbin
 
 # --- MARK: Builder Stage

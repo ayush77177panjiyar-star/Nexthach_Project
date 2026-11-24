@@ -11,10 +11,10 @@ RUN apt-get update && \
   apt-get install -y --no-install-recommends \
   build-essential \
   python3-dev && \
-  rm -rf /var/lib/apt/lists/* 
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-
-# Install UV and set up the environment 
+# Install UV and set up the environment
 COPY --from=uvbin /uv /uvx /bin/
 
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_NO_DEV=1
@@ -24,6 +24,7 @@ ENV UV_PYTHON_INSTALL_DIR=/python
 RUN uv python install 3.12
 
 # Install dependencies first to leverage caching
+# EXTRAS defaults to cpu (uses https://download.pytorch.org/whl/cpu via pyproject.toml)
 ARG EXTRAS=cpu
 COPY pyproject.toml uv.lock README.md LICENSE /app/
 COPY third_party /app/third_party
@@ -41,12 +42,14 @@ RUN set -eux; \
   for extra in $(echo "${EXTRAS:-}" | tr ',' ' '); do \
   set -- "$@" --extra "$extra"; \
   done; \
-  uv sync --frozen --no-editable --no-cache "$@"
+  uv sync --frozen --no-editable --no-cache "$@" && \
+  find /app/.venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
-# --- MARK: Runtime Stage 
+# --- MARK: Runtime Stage
 FROM debian:bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
@@ -54,7 +57,8 @@ RUN apt-get update && \
   apt-get install -y --no-install-recommends \
   ffmpeg \
   ca-certificates && \
-  rm -rf /var/lib/apt/lists/* && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
   update-ca-certificates
 
 # Copy UV binaries
@@ -66,15 +70,19 @@ COPY --from=builder-cpu /python /python
 # Copy the virtual environment with all dependencies installed
 COPY --from=builder-cpu /app/.venv /app/.venv
 
-EXPOSE 8000
+# Copy entrypoint script
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+
+EXPOSE 8000 10000
 
 ENV PATH="/app/.venv/bin:$PATH"
 ENV UV_PYTHON_DOWNLOADS=0
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/')" || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD python -c "import os, urllib.request; port = os.environ.get('PORT', '8000'); urllib.request.urlopen(f'http://localhost:{port}/health')" || exit 1
 
-ENTRYPOINT ["wlk", "--host", "0.0.0.0"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
-# Default args - you might want to use a smaller model for CPU
+# Default args for CPU deployment: start with tiny model for minimal RAM and fast response
 CMD ["--model", "tiny"]

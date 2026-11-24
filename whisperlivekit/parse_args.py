@@ -1,17 +1,23 @@
 
+import os
 from argparse import ArgumentParser, BooleanOptionalAction
 
 
 def build_parser():
     parser = ArgumentParser(description="Whisper FastAPI Online Server")
+    default_host = os.environ.get("HOST", "0.0.0.0" if os.environ.get("PORT") else "localhost")
+    default_port = int(os.environ.get("PORT", 8000))
     parser.add_argument(
         "--host",
         type=str,
-        default="localhost",
-        help="The host address to bind the server to.",
+        default=default_host,
+        help="The host address to bind the server to. Defaults to $HOST, or 0.0.0.0 if $PORT is set, else localhost.",
     )
     parser.add_argument(
-        "--port", type=int, default=8000, help="The port number to bind the server to."
+        "--port",
+        type=int,
+        default=default_port,
+        help="The port number to bind the server to. Defaults to $PORT or 8000.",
     )
     parser.add_argument(
         "--translate-on-complete",
