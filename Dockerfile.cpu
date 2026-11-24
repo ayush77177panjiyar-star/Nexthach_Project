@@ -1,0 +1,61 @@
+FROM python:3.12-slim-bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+ENV UV_NO_DEV=1
+ENV UV_PYTHON_DOWNLOADS=0
+ENV PATH="/app/.venv/bin:$PATH"
+
+WORKDIR /app
+
+# Install runtime dependencies (ffmpeg is required for audio stream decoding)
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends \
+    ffmpeg \
+    ca-certificates && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Copy UV binary
+COPY --from=ghcr.io/astral-sh/uv:0.13.6 /uv /uvx /bin/
+
+# Install CPU dependencies using the frozen uv.lock
+# EXTRAS=cpu maps torch/torchaudio to https://download.pytorch.org/whl/cpu
+ARG EXTRAS=cpu
+COPY pyproject.toml uv.lock README.md LICENSE /app/
+COPY third_party /app/third_party
+
+RUN set -eux; \
+  set --; \
+  for extra in $(echo "${EXTRAS:-}" | tr ',' ' '); do \
+    set -- "$@" --extra "$extra"; \
+  done; \
+  uv sync --frozen --no-install-project --no-editable --no-cache "$@"
+
+# Copy application source and install package
+COPY whisperlivekit /app/whisperlivekit
+
+RUN set -eux; \
+  set --; \
+  for extra in $(echo "${EXTRAS:-}" | tr ',' ' '); do \
+    set -- "$@" --extra "$extra"; \
+  done; \
+  uv sync --frozen --no-editable --no-cache "$@" && \
+  find /app/.venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true && \
+  rm -f /bin/uv /bin/uvx
+
+# Copy entrypoint script
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+
+EXPOSE 8000 10000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD python -c "import os, urllib.request; port = os.environ.get('PORT', '8000'); urllib.request.urlopen(f'http://localhost:{port}/health')" || exit 1
+
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+
+# Default args for CPU deployment: start with tiny model for minimal RAM and fast response
+CMD ["--model", "tiny"]
